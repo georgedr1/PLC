@@ -154,6 +154,10 @@
             (eopl:error 'parse-exp "Error in parse-exp: let expression: incorrect length: ~s" datum)]
             [(not (list? (2nd datum)))
               (eopl:error 'parse-exp "Error in parse-exp: let decls: not a proper list: ~s" datum)]
+			[(not ((list-of symbol?) (map car (2nd datum))))
+				(eopl:error 'parse-exp "first members must be symbols for let args: ~s" (2nd datum))]
+			[(and (not (null? (2nd datum))) (not (andmap (lambda (x) (eq? 2 (length x))) (2nd datum))))
+				(eopl:error 'parse-exp "let args must all be 2-lists: ~s" (2nd datum))]
             [else
             (let-exp 
                 (map list (map car (2nd datum))             ;vars
@@ -164,14 +168,22 @@
             (eopl:error 'parse-exp "Error in parse-exp: let* expression: incorrect length: ~s" datum)]
             [(not (list? (2nd datum)))
               (eopl:error 'parse-exp "Error in parse-exp: let* decls: not a proper list: ~s" datum)]
-            [else
+			[(not ((list-of symbol?) (map car (2nd datum))))
+				(eopl:error 'parse-exp "first members must be symbols for let* args: ~s" (2nd datum))]
+            [(and (not (null? (2nd datum))) (not (andmap (lambda (x) (eq? 2 (length x))) (2nd datum))))
+				(eopl:error 'parse-exp "let* args must all be 2-lists: ~s" (2nd datum))]
+			[else
             (let*-exp (map parse-exp (2nd datum)) (map parse-exp (cddr datum)))])]
       [(eqv? (car datum) 'letrec)
         (cond [(or (null? (cdr datum)) (null? (cddr datum)))
             (eopl:error 'parse-exp "Error in parse-exp: letrec expression: incorrect length: ~s" datum)]
             [(not (list? (2nd datum)))
               (eopl:error 'parse-exp "Error in parse-exp: letrec decls: not a proper list: ~s" datum)]
-            [else
+			[(not ((list-of symbol?) (map car (2nd datum))))
+				(eopl:error 'parse-exp "first members must be symbols for letrec args: ~s" (2nd datum))]
+            [(and (not (null? (2nd datum))) (not (andmap (lambda (x) (eq? 2 (length x))) (2nd datum))))
+				(eopl:error 'parse-exp "letrec args must all be 2-lists: ~s" (2nd datum))]
+			[else
             (letrec-exp (map parse-exp (2nd datum)) (map parse-exp (cddr datum)))])]
       [(eqv? (car datum) 'set!)
         (cond [(null? (cddr datum))
@@ -299,8 +311,6 @@
       [app-exp (rator rands)
         (let ([proc-value (eval-exp rator env)]
               [args (eval-rands rands env)])
-          ; (if (and (pair? (car args)) (eq? (caar args) 'prim-proc))
-          ;   (apply-proc proc-value (cdar args))
             (apply-proc proc-value args))]
       [if-exp (condition body)
         (if (eval-exp condition env)
@@ -375,7 +385,10 @@
       [(/) (apply / args)]
       [(add1) (+ (1st args) 1)]
       [(sub1) (- (1st args) 1)]
-      [(cons) (cons (1st args) (2nd args))]
+      [(cons) 
+		(if (not (eq? 2 (length args)))
+			(eopl:error 'apply-prim-proc "Incorrect number of arguments to cons: ~s" args)
+			(cons (1st args) (2nd args)))]
       [(=) (= (1st args) (2nd args))]
       [(>=) (>= (1st args) (2nd args))]
       [(>) (> (1st args) (2nd args))]
@@ -384,7 +397,16 @@
       [(not) (not (1st args))]
       [(and) (andmap (lambda (x) x) args)]
       [(or) (ormap (lambda (x) x) args)]
-      [(car) (car (1st args))]
+      [(car) 
+		(cond 
+			[(not (eq? 1 (length args)))
+				(eopl:error 'apply-prim-proc "Incorrect number of arguments to car: ~s" args)]
+			[(not (list? (1st args)))
+				(eopl:error 'apply-prim-proc "car requires a list: ~s" (1st args))]
+			[(null? (1st args))
+				(eopl:error 'apply-prim-proc "Cannot find the car of an empty list: ~s" (1st args))]
+			[else
+				(car (1st args))])]
       [(cdr) (cdr (1st args))]
       [(list) args]
       [(null?) (null? (1st args))]
