@@ -1,7 +1,7 @@
 ;:  Single-file version of the interpreter.
 ;; Easier to submit to server probably harder to use in the development process
 
-(load "chez-init.ss") 
+; (load "chez-init.ss") 
 
 ;-------------------+
 ;                   |
@@ -324,13 +324,32 @@
                                       env)))
           (eval-let-bodies body extended-env))]
       [lambda-exp (id body)
-        (proc
-          (lambda (vals)           
-            (let ((extended-env (extend-env 
-                                          id
-                                          vals
-                                          env)))
-           (eval-let-bodies body extended-env))))]
+        (cond [(list? id)
+                (proc
+                  (lambda (vals)           
+                    (let ((extended-env (extend-env 
+                                                  id
+                                                  vals
+                                                  env)))
+                   (eval-let-bodies body extended-env))))]
+              [(pair? id)
+                (let* ([prop-id (improper-2-proper id)]
+                       [id-len (length prop-id)])
+                (proc
+                  (lambda (vals)
+                    (let ((extended-env (extend-env 
+                                                  prop-id
+                                                  (append (list-head vals (sub1 id-len)) (list (list-tail vals (sub1 id-len))))
+                                                  env)))
+                   (eval-let-bodies body extended-env)))))]
+              [(symbol? id) 
+                (proc
+                  (lambda (vals)           
+                    (let ((extended-env (extend-env 
+                                                  (list id)
+                                                  (list vals)
+                                                  env)))
+                   (eval-let-bodies body extended-env))))])]
       [else (eopl:error 'eval-exp "Bad abstract syntax: ~a" exp)])))
 
 (define eval-let-bodies
@@ -342,6 +361,17 @@
             (eval-let-bodies (cdr bodies) env)))))
 
 ; evaluate the list of operands putting results into a list
+(define improper-2-proper
+  (lambda (ils)
+    (if (pair? ils)
+          (cons (car ils) (improper-2-proper (cdr ils)))
+          (list ils))))
+
+(define list-head
+  (lambda (ls n)
+    (if (eq? 0 n)
+          '()
+          (cons (car ls) (list-head (cdr ls) (sub1 n))))))
 
 (define  eval-rands
   (lambda (rands env)
@@ -455,19 +485,11 @@
           (newline)
           (newline (1st args)))] 
 		[(apply) (apply (eval (2nd (1st args))) (2nd args))]
-		[(map) (map (apply-proc (1st args)) (2nd args))]
+		[(map) (map (lambda x (apply-proc (1st args) x)) (2nd args))]
       [else (error 'apply-prim-proc 
             "Bad primitive procedure name: ~s" 
             prim-proc)])))
 			
-;(define eval-map
-;	(lambda (pred . ls)
-;		(cond 
-;			[(not ((list-of list) ls))
-;				(if	(null? ls) 
-;					'()
-;					(cons (pred (car ls)) (eval-map pred (cdr ls))))]
-			;[else
 	
 
 (define  rep      ; "read-eval-print" loop.
