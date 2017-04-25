@@ -1,7 +1,7 @@
 ;:  Single-file version of the interpreter.
 ;; Easier to submit to server probably harder to use in the development process
 
-; (load "chez-init.ss") 
+(load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
 
 ;-------------------+
 ;                   |
@@ -26,6 +26,8 @@
   [letrec-exp
     (vars (list-of expression?))
     (body (list-of expression?))]
+  [begin-exp
+    (body (list-of expression?))]
   [app-exp
    (rator expression?)
    (rands (list-of expression?))]
@@ -35,8 +37,18 @@
   [set!-exp
     (var expression?)
     (new expression?)]
+  [cond-exp
+    (conditiions (list-of expression?))
+    (bodies (list-of expression?))]
   [lit-exp
-    (id literal?)])
+    (id literal?)]
+  [case-exp
+    (expr0 expression?)
+    (keys (list-of expression?))
+    (exprs (list-of (list-of expression?)))]
+  [while-exp
+    (test expression?)
+    (bodies (list-of expression?))])
 
 (define let-var?
   (lambda (x)
@@ -53,7 +65,7 @@
        (list number? vector? boolean? symbol? string? pair? null?))))
 
 	
-	(define  unparse-exp
+(define  unparse-exp
   (lambda (exp)
     (cases expression exp
       [var-exp (id) id]
@@ -81,7 +93,10 @@
               (map unparse-exp body))]
       [set!-exp (var new)
         (list 'set! (unparse-exp var) (unparse-exp new))]
-      [lit-exp (id) id])))
+      [lit-exp (id) id]
+      [else (eopl:error 'unparse-exp:  ; procedure to call if it is not in env
+              "unparse nopt defined for : ~s"
+         exp)])))
 
 ;; environment type definitions
 
@@ -191,9 +206,24 @@
             [(not (null? (cdddr datum)))
               (eopl:error 'parse-exp "Error in parse-exp: set!: Too many parts: ~s" datum)]
             [else
-            (set!-exp (parse-exp (2nd datum)) (parse-exp (3rd datum)))])] 
+            (set!-exp (parse-exp (2nd datum)) (parse-exp (3rd datum)))])]
+      [(eqv? (car datum) 'begin)
+            (begin-exp (map parse-exp (cdr datum)))]
+      [(eqv? (car datum) 'cond)
+        (cond-exp 
+            (map parse-exp (map car (cdr datum)))
+            (map parse-exp (map cadr (cdr datum))))]
+      [(eqv? (car datum) 'case)
+        (case-exp 
+            (parse-exp (cadr datum))
+            (map parse-exp (map car (cddr datum)))
+            (map parse-exp (map cadr (cddr datum))))]
       [(eqv? (car datum) 'quote)
         (lit-exp (cadr datum))]
+      [(eqv? (car datum) 'while)
+        (while-exp 
+          (parse-exp (cadr datum))
+          (map parse-exp (cddr datum)))]
       [else 
           (cond [(not (list? datum))
               (eopl:error 'parse-exp "Error in parse-exp: pplication ~s is not a proper list" datum)]
@@ -271,12 +301,35 @@
 
 
 
-; To be added later
-
-
-
-
-
+(define syntax-expand
+    (lambda (exp)
+        (cases expression exp
+          [var-exp (id) exp]
+          [lit-exp (id) exp]
+          [lambda-exp (id body) 
+            (lambda-exp id (map syntax-expand body))]
+          [let-exp (vars body)
+            (app-exp 
+              (lambda-exp (map car vars) (map syntax-expand body))
+              (map cadr vars))]
+          [if-exp (condition body) 
+            (if-exp (syntax-expand condition) (map syntax-expand body))]
+          [set!-exp (var new)
+            (set!-exp var (syntax-expand new))]
+          [begin-exp (body)
+            (let-exp '() (map syntax-expand body))]
+          [cond-exp (conditions bodies)
+            (cond [(and (null? (cdr conditions)) (eqv? (unparse-exp (car conditions)) 'else))
+                    (syntax-expand (car bodies))]
+                  [(null? (cdr conditions))
+                    (if-exp (syntax-expand (car conditions)) (list (syntax-expand (car bodies))))]
+                  [else
+                    (if-exp (syntax-expand (car conditions)) (list (syntax-expand (car bodies)) (syntax-expand (cond-exp (cdr conditions) (cdr bodies)))))])]
+          ; [case-exp (expr0 keys exprs)
+          ;   (syntax-expand ]
+          [while-exp (test bodies)
+            (while-exp (syntax-expand test) (map syntax-expand bodies))]
+          [else exp])))
 
 
 
@@ -350,6 +403,14 @@
                                                   (list vals)
                                                   env)))
                    (eval-let-bodies body extended-env))))])]
+      [while-exp (test bodies)
+        (if (eval-exp test env)
+              (begin
+                (newline)
+                (display 1)              
+                (map (lambda (x) (eval-exp x env)) bodies)
+                (eval-exp (while-exp test bodies) env))
+              #f)]
       [else (eopl:error 'eval-exp "Bad abstract syntax: ~a" exp)])))
 
 (define eval-let-bodies
@@ -395,7 +456,7 @@
 (define *prim-proc-names* '(+ - * / add1 sub1 cons = > < >= <= not and or car cdr list null? assq eq? equal? atom? zero? length list->vector 
   list? pair? procedure? vector->list vector make-vector vector-ref
   vector? number? symbol? set-car! set-cdr! vector-set! display newline caar cadr cddr cdar caaar caadr cadar caddr cdaar cdadr cddar cdddr
-  apply map))
+  apply map quotient))
 
 (define init-env         ; for now our initial global environment only contains 
   (extend-env            ; procedure names.  Recall that an environment associates
@@ -414,6 +475,7 @@
       [(-) (apply - args)]
       [(*) (apply * args)]
       [(/) (apply / args)]
+      [(quotient) (quotient (1st args) (2nd args))]
       [(add1) (+ (1st args) 1)]
       [(sub1) (- (1st args) 1)]
       [(cons) 
@@ -502,7 +564,8 @@
       (rep))))  ; tail-recursive so stack doesn't grow.
 
 (define  eval-one-exp
-  (lambda (x) (top-level-eval (parse-exp x))))
+  (lambda (x) 
+    (top-level-eval (syntax-expand (parse-exp x)))))
 
 
 
