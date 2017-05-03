@@ -1,10 +1,12 @@
 ;:  Single-file version of the interpreter.
 ;; Easier to submit to server probably harder to use in the development process
 
-(load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
+; (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
+(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
 
 ;TODO: Ask about why subst-leftmost on letrec isn't working
 ;TODO: Ask about why while only loops one time
+;TODO: Ask about changing env with set!
 
 ;-------------------+
 ;                   |
@@ -390,7 +392,7 @@ proc-names idss bodiess old-env)))
           ;[case-exp (expr0 keys exprs)]
             ;(syntax-expand (cond-exp (ormap ))]
          [while-exp (test bodies)
-           (named-let-exp 'loop '((dummy (lit-exp 1))) (list (if-exp test (append bodies (list (app-exp (var-exp 'loop) (list (lit-exp '()))))))))]
+           (syntax-expand (named-let-exp 'loop '((dummy (lit-exp 1))) (list (if-exp test (append bodies (list (app-exp (var-exp 'loop) (list (lit-exp '())))))))))]
           [else exp])))
 
 
@@ -416,7 +418,7 @@ proc-names idss bodiess old-env)))
 (define  eval-exp
   (lambda (exp env)
     ; (display "eval-exp\n")
-    ; (display exp)
+    ; (display env)
     ; (display "\n")
     (cases expression exp
       [lit-exp (datum) datum]
@@ -471,6 +473,17 @@ proc-names idss bodiess old-env)))
                                                   (list vals)
                                                   env)))
                    (eval-let-bodies body extended-env))))])]
+         [set!-exp (var new)
+          ; eval new
+          ; find var in env
+          ; use list ref to change value to new 
+          (let* ([new-val (eval-exp new env)]
+                [new-env (set!-in-env var new-val env)])
+                (set! env new-env)
+            )]
+
+
+
       ; [while-exp (test bodies)
       ; (eval-while (test bodies ))
       ;   (if (eval-exp test env)
@@ -483,6 +496,36 @@ proc-names idss bodiess old-env)))
       ;                                                         env))
       ;         #f))]
       [else (eopl:error 'eval-exp "Bad abstract syntax: ~a" exp)])))
+
+(define set!-in-env 
+  (lambda (var new-val env)
+    (cases environment env       ;  succeed is appluied if sym is found otherwise 
+      [empty-env-record ()       ;  fail is applied.
+        (eopl:error 'set!-in-env "var not found: ~a" var)]
+      [extended-env-record (syms vals next-env)
+        (let ([pos (list-find-position (cadr var) syms)])
+                (display vals)
+                (display "\n")
+                (display (list->vector vals))
+                (display "\n")
+                (display (vector-set! (list->vector vals) pos new-val))
+                (display "\n")
+                (if (number? pos)
+                        (let ([vec (list->vector vals)])
+                          (vector-set! vec pos new-val)
+                          (extended-env-record syms (vector->list vec) next-env))
+                        (extended-env-record syms vals (set!-in-env var new-val next-env))))]
+      [else
+        (eopl:error 'set!-in-env "wrong env: ~a" var)])))
+      ; [recursively-extended-env-record (procnames idss bodiess old-env)
+      ;   (let ([pos (list-find-position sym procnames)])
+      ;     (if (number? pos)
+      ;       (closure (list-ref idss pos)
+      ;                 (list-ref bodiess pos)
+      ;                 env)
+      ;       (apply-env old-env sym succeed fail)))])))
+   
+
 
 (define eval-while
   (lambda (test bodies env)
