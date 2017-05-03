@@ -1,7 +1,7 @@
 ;:  Single-file version of the interpreter.
 ;; Easier to submit to server probably harder to use in the development process
 
-(load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
+;(load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
 
 ;-------------------+
 ;                   |
@@ -403,7 +403,7 @@
                                                   (list vals)
                                                   env)))
                    (eval-let-bodies body extended-env))))])]
-      [while-exp (test bodies)
+      [while-exp (test bodies) ; look at TSPL section 3.2 for recursive let
         (if (eval-exp test env)
               (begin
                 (newline)
