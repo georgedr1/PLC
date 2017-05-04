@@ -1,8 +1,8 @@
 ;:  Single-file version of the interpreter.
 ;; Easier to submit to server probably harder to use in the development process
 
-; (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
-(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
+ (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
+;(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
 
 ;TODO: Ask about why subst-leftmost on letrec isn't working
 ;TODO: Ask about why while only loops one time
@@ -130,7 +130,7 @@
 (define-datatype proc-val proc-val?
   [prim-proc
    (name symbol?)]
-  [proc 
+  [proc
     (name procedure?)]
   [closure
     (ids lambda-arg?)
@@ -415,7 +415,7 @@ proc-names idss bodiess old-env)))
 
 ; eval-exp is the main component of the interpreter
 
-(define  eval-exp
+(define eval-exp
   (lambda (exp env)
     ; (display "eval-exp\n")
     ; (display env)
@@ -447,32 +447,34 @@ proc-names idss bodiess old-env)))
         (eval-let-bodies bodies
           (extend-env-recursively (map cadadr ids) (map cadr (map caaddr ids)) (map caddr (map caaddr ids)) env))]
       [lambda-exp (id body)
-        (cond [(list? id)
-                (proc
-                  (lambda (vals)           
-                    (let ((extended-env (extend-env 
-                                                  id
-                                                  vals
-                                                  env)))
-                   (eval-let-bodies body extended-env))))]
-              [(pair? id)
-                (let* ([prop-id (improper-2-proper id)]
-                       [id-len (length prop-id)])
-                (proc
-                  (lambda (vals)
-                    (let ((extended-env (extend-env 
-                                                  prop-id
-                                                  (append (list-head vals (sub1 id-len)) (list (list-tail vals (sub1 id-len))))
-                                                  env)))
-                   (eval-let-bodies body extended-env)))))]
-              [(symbol? id) 
-                (proc
-                  (lambda (vals)           
-                    (let ((extended-env (extend-env 
-                                                  (list id)
-                                                  (list vals)
-                                                  env)))
-                   (eval-let-bodies body extended-env))))])]
+        (closure id body env)
+        ; (cond [(list? id)
+        ;         (proc
+        ;           (lambda (vals)           
+        ;             (let ((extended-env (extend-env 
+        ;                                           id
+        ;                                           vals
+        ;                                           env)))
+        ;            (eval-let-bodies body extended-env))))]
+        ;       [(pair? id)
+        ;         (let* ([prop-id (improper-2-proper id)]
+        ;                [id-len (length prop-id)])
+        ;         (proc
+        ;           (lambda (vals)
+        ;             (let ((extended-env (extend-env 
+        ;                                           prop-id
+        ;                                           (append (list-head vals (sub1 id-len)) (list (list-tail vals (sub1 id-len))))
+        ;                                           env)))
+        ;            (eval-let-bodies body extended-env)))))]
+        ;       [(symbol? id) 
+        ;         (proc
+        ;           (lambda (vals)           
+        ;             (let ((extended-env (extend-env 
+        ;                                           (list id)
+        ;                                           (list vals)
+        ;                                           env)))
+        ;            (eval-let-bodies body extended-env))))])
+        ]
          [set!-exp (var new)
           ; eval new
           ; find var in env
@@ -504,12 +506,12 @@ proc-names idss bodiess old-env)))
         (eopl:error 'set!-in-env "var not found: ~a" var)]
       [extended-env-record (syms vals next-env)
         (let ([pos (list-find-position (cadr var) syms)])
-                (display vals)
-                (display "\n")
-                (display (list->vector vals))
-                (display "\n")
-                (display (vector-set! (list->vector vals) pos new-val))
-                (display "\n")
+                ; (display vals)
+                ; (display "\n")
+                ; (display (list->vector vals))
+                ; (display "\n")
+                ; (display (vector-set! (list->vector vals) pos new-val))
+                ; (display "\n")
                 (if (number? pos)
                         (let ([vec (list->vector vals)])
                           (vector-set! vec pos new-val)
@@ -583,41 +585,32 @@ proc-names idss bodiess old-env)))
         (cond [(list? id)
                 ; (display id)
                 ; (display "\n")
-                ; (display bodies)
-                (apply-proc (proc
-                  (lambda (vals)           
+                ; (display bodies)        
                     (let ((extended-env (extend-env 
                                                   id
-                                                  vals
+                                                  args
                                                   env)))
-                   (eval-let-bodies bodies extended-env))))
-                   args)] ; need to apply procs somewhere, possibly here, possibly in eval-let-bodies, maybe elsewhere
+                   (eval-let-bodies bodies extended-env))] ; need to apply procs somewhere, possibly here, possibly in eval-let-bodies, maybe elsewhere
               [(pair? id)
               ; (display args)
               ; (newline)
-              (apply-proc (proc
-                (lambda (vals)
+
                   (let* ([prop-id (improper-2-proper id)]
                          [id-len (length prop-id)]
                          [extended-env (extend-env 
                                                     prop-id
-                                                    (append (list-head vals (sub1 id-len)) (list (list-tail vals (sub1 id-len))))
+                                                    (append (list-head args (sub1 id-len)) (list (list-tail args (sub1 id-len))))
                                                     env)])
-                    (display "1\n")
-                   (eval-let-bodies bodies extended-env)))) 
-                (display "2\n")
-                
-              args)]
+                   (eval-let-bodies bodies extended-env))
+                ]
              
 
-              [(symbol? id) 
-                (proc
-                  (lambda (vals)           
+              [(symbol? id)          
                     (let ((extended-env (extend-env 
                                                   (list id)
-                                                  (list vals)
+                                                  (list args)
                                                   env)))
-                   (eval-let-bodies body extended-env))))])]
+                   (eval-let-bodies bodies extended-env))])]
       [else (eopl:error 'apply-proc
                    "Attempt to apply bad procedure: ~s" 
                     proc-value)])))
@@ -718,7 +711,10 @@ proc-names idss bodiess old-env)))
         (if (null? args)
           (newline)
           (newline (1st args)))] 
-		[(apply) (apply (eval (2nd (1st args))) (2nd args))]
+		[(apply)
+    (if (not (eq? 2 (length args)))
+      (eopl:error 'apply-prim-proc "Incorrect number of arguments to apply: ~s" args)
+      (apply-proc (1st args) (2nd args)))]
 		[(map) (map (lambda x (apply-proc (1st args) x)) (2nd args))]
       [else (error 'apply-prim-proc 
             "Bad primitive procedure name: ~s" 
