@@ -1,8 +1,8 @@
 ;:  Single-file version of the interpreter.
 ;; Easier to submit to server probably harder to use in the development process
 
- (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
-;(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
+ ; (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
+(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
 
 ;TODO: Ask about why subst-leftmost on letrec isn't working
 ;TODO: Ask about why while only loops one time
@@ -287,6 +287,7 @@
 
 (define extend-env-recursively
   (lambda (proc-names idss bodiess old-env)
+    ; (display "extend-env-recursively\n")
     (box (recursively-extended-env-record
           proc-names idss bodiess old-env))))
 
@@ -306,6 +307,7 @@
 
 (define apply-env
   (lambda (boxed-env sym succeed fail) ; succeed and fail are "callback procedures
+    ; (display "apply-env\n")
     (let ((env (unbox boxed-env)))
     (cases environment env       ;  succeed is applied if sym is found otherwise 
       [empty-env-record ()       ;  fail is applied.
@@ -320,7 +322,7 @@
           (if (number? pos)
             (closure (list-ref idss pos)
                       (list-ref bodiess pos)
-                      env)
+                      boxed-env)
             (apply-env old-env sym succeed fail)))]))))
 
 
@@ -421,7 +423,7 @@
                                       (map car vars)
                                       (map (lambda (x) (eval-exp x env)) (map cadr vars))
                                       env)))
-          (eval-let-bodies body extended-env))]
+          (eval-let-bodies body env))]
       [letrec-exp (ids bodies)
         (eval-let-bodies bodies
           (extend-env-recursively (map cadadr ids) (map cadr (map caaddr ids)) (map caddr (map caaddr ids)) env))]
@@ -453,6 +455,7 @@
 
 (define set!-in-env 
   (lambda (var new-val env)
+    ; (display "set!-in-env\n")
     (cases environment env       ;  succeed is appluied if sym is found otherwise 
       [empty-env-record ()       ;  fail is applied.
         (eopl:error 'set!-in-env "var not found in empty environment: ~a" var)]
@@ -462,7 +465,7 @@
                         (let ([vec (list->vector vals)])
                           (vector-set! vec pos new-val)
                           (extended-env-record syms (vector->list vec) next-env))
-                        (extended-env-record syms vals (set!-in-env var new-val next-env))))]
+                        (extended-env-record syms vals (box (set!-in-env var new-val (unbox next-env))))))]
       [else
         (eopl:error 'set!-in-env "wrong env: ~a" var)])))
       ; [recursively-extended-env-record (procnames idss bodiess old-env)
@@ -487,15 +490,19 @@
 (define eval-let-bodies
   (lambda (bodies env)
       ; (display "eval-let-bodies\n")
+      ; (display env)
+      ; (newline)
       (if (null? (cdr bodies))
            ; (begin 
            ;  (display (car bodies))
            ;  ; (display (eval-exp (car bodies) env))
-           ;  (display "\n")
+            ; (display "\n")
             (eval-exp (car bodies) env)
           (begin 
             ; (display (car bodies))
             (eval-exp (car bodies) env)
+            ; (display env)
+            ; (newline)
             (eval-let-bodies (cdr bodies) env)))))
 
 ; evaluate the list of operands putting results into a list
@@ -528,6 +535,7 @@
       [proc (name)
         (name args)]
       [closure (id bodies env)
+        ; (display env)
         (cond 
           [(list? id)   
             (let ((extended-env (extend-env id args env)))
