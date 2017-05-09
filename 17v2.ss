@@ -1,8 +1,8 @@
 ;:  Single-file version of the interpreter.
 ;; Easier to submit to server probably harder to use in the development process
 
- (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
-;(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
+ ; (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
+(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
 
 ;TODO: Ask about why subst-leftmost on letrec isn't working
 ;TODO: Ask about why while only loops one time
@@ -277,6 +277,8 @@
 ; Environment definitions for CSSE 304 Scheme interpreter.  
 ; Based on EoPL sections 2.2 and 2.3
 
+
+
 (define  empty-env
   (lambda ()
     (empty-env-record)))
@@ -411,7 +413,7 @@ proc-names idss bodiess old-env)))
 (define  top-level-eval
   (lambda (form)
     ; later we may add things that are not expressions.
-    (eval-exp form init-env)))
+    (eval-exp form (empty-env))))
 
 ; eval-exp is the main component of the interpreter
 
@@ -423,11 +425,15 @@ proc-names idss bodiess old-env)))
     (cases expression exp
       [lit-exp (datum) datum]
       [var-exp (id)
-				(apply-env env id; look up its value.
-      	   (lambda (x) x) ; procedure to call if it is in the environment 
-           (lambda () (eopl:error 'apply-env ; procedure to call if it is not in env
-		          "variable not found in environment: ~s"
-			   id)))] 
+				(apply-env env 
+                   id; look up its value.
+      	           (lambda (x) x) ; procedure to call if it is in the environment 
+                   (lambda () (apply-env global-env
+                                         id
+                                         (lambda (x) x) 
+                                         (lambda () (error 'apply-env
+                                                            "variable ~s is not bound"
+                                                            id)))))] 
       [app-exp (rator rands)
         (let ([proc-value (eval-exp rator env)]
               [args (eval-rands rands env)])
@@ -626,6 +632,8 @@ proc-names idss bodiess old-env)))
      (map prim-proc      
           *prim-proc-names*)
      (empty-env)))
+
+(define global-env init-env)
 
 ; Usually an interpreter must define  each 
 ; built-in procedure individually.  We are "cheating" a little bit.
