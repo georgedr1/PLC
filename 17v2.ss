@@ -116,13 +116,13 @@
   (empty-env-record)
   (extended-env-record
    (syms (list-of symbol?))
-   (vals (list-of scheme-value?))
+   (vals (list-of box?))
    (env environment?))
   [recursively-extended-env-record
-(proc-names (list-of symbol?))
-(idss (list-of pair?))
-(bodiess (list-of (list-of expression?)))
-(env environment?)])
+    (proc-names (list-of symbol?))
+    (idss (list-of pair?))
+    (bodiess (list-of (list-of expression?)))
+    (env environment?)])
 
 ; datatype for procedures.  At first there is only one
 ; kind of procedure but more kinds will be added later.
@@ -285,7 +285,7 @@
 
 (define  extend-env
   (lambda (syms vals env)
-    (extended-env-record syms vals env)))
+    (extended-env-record syms (map box vals) env)))
 
 (define extend-env-recursively
 (lambda (proc-names idss bodiess old-env)
@@ -328,15 +328,15 @@ proc-names idss bodiess old-env)))
       [empty-env-record ()       ;  fail is applied.
         (fail)]
       [extended-env-record (syms vals env)
-		(let ((pos (list-find-position sym syms)))
-      	  (if 	(number? pos)
-				(succeed (list-ref vals pos))
-				(apply-env env sym succeed fail)))]
+    		(let ((pos (list-find-position sym syms)))
+          	  (if 	(number? pos)
+    				(succeed (list-ref (map unbox vals) pos))
+    				(apply-env env sym succeed fail)))]
       [recursively-extended-env-record (procnames idss bodiess old-env)
         (let ([pos (list-find-position sym procnames)])
           (if (number? pos)
             (closure (list-ref idss pos)
-                      (list-ref bodiess pos)
+                     (list-ref bodiess pos)
                       env)
             (apply-env old-env sym succeed fail)))])))
 
@@ -485,9 +485,8 @@ proc-names idss bodiess old-env)))
           ; eval new
           ; find var in env
           ; use list ref to change value to new 
-          (let* ([new-val (eval-exp new env)]
-                [new-env (set!-in-env var new-val env)])
-                (set! env new-env)
+          (let ([new-val (eval-exp new env)])
+                (set!-in-env var new-val env)
             )]
 
 
@@ -507,22 +506,16 @@ proc-names idss bodiess old-env)))
 
 (define set!-in-env 
   (lambda (var new-val env)
+    ; (display "set!-in-env\n")
     (cases environment env       ;  succeed is appluied if sym is found otherwise 
       [empty-env-record ()       ;  fail is applied.
-        (eopl:error 'set!-in-env "var not found: ~a" var)]
+        (eopl:error 'set!-in-env "var not found in empty environment: ~a" var)]
       [extended-env-record (syms vals next-env)
         (let ([pos (list-find-position (cadr var) syms)])
-                ; (display vals)
-                ; (display "\n")
-                ; (display (list->vector vals))
-                ; (display "\n")
-                ; (display (vector-set! (list->vector vals) pos new-val))
-                ; (display "\n")
                 (if (number? pos)
-                        (let ([vec (list->vector vals)])
-                          (vector-set! vec pos new-val)
-                          (extended-env-record syms (vector->list vec) next-env))
-                        (extended-env-record syms vals (set!-in-env var new-val next-env))))]
+                        (let ([old-val (list-ref vals pos)])
+                          (set-box! old-val new-val))
+                        (set!-in-env var new-val next-env)))]
       [else
         (eopl:error 'set!-in-env "wrong env: ~a" var)])))
       ; [recursively-extended-env-record (procnames idss bodiess old-env)

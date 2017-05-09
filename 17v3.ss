@@ -430,14 +430,13 @@
           (extend-env-recursively (map cadadr ids) (map cadr (map caaddr ids)) (map caddr (map caaddr ids)) env))]
       [lambda-exp (id body)
         (closure id body env)]
-         [set!-exp (var new)
+      [set!-exp (var new)
           ; eval new
           ; find var in env
           ; use list ref to change value to new 
-          (let* ([new-val (eval-exp new env)]
-                [new-env (set!-in-env var new-val (unbox env))])
-                (set-box! env new-env)
-            )]
+        (let* ([new-val (eval-exp new env)]
+            (set!-in-env var new-val env)])
+          )]
 
 
 
@@ -463,10 +462,9 @@
       [extended-env-record (syms vals next-env)
         (let ([pos (list-find-position (cadr var) syms)])
                 (if (number? pos)
-                        (let ([vec (list->vector vals)])
-                          (vector-set! vec pos new-val)
-                          (extended-env-record syms (vector->list vec) next-env))
-                        (extended-env-record syms vals (box (set!-in-env var new-val (unbox next-env))))))]
+                        (let ([old-val (list-ref vals pos)])
+                          (set-box! old-val new-val))
+                        (set!-in-env var new-val next-env)))]
       [else
         (eopl:error 'set!-in-env "wrong env: ~a" var)])))
       ; [recursively-extended-env-record (procnames idss bodiess old-env)
