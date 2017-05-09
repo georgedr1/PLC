@@ -37,6 +37,9 @@
     (body (list-of expression?))]
   [begin-exp
     (body (list-of expression?))]
+  [define-exp
+    (variable symbol?)
+    (definition expression?)]
   [app-exp
    (rator expression?)
    (rands (list-of expression?))]
@@ -160,12 +163,14 @@
 (define 2nd cadr)
 (define 3rd caddr)
 
-(define  parse-exp         
+(define parse-exp         
   (lambda (datum)
     (cond
      [(symbol? datum) (var-exp datum)]
      [(pair? datum)
       (cond
+        [(eqv? (car datum) 'define)
+          (define-exp (cadr datum) (parse-exp (caddr datum)))]
         [(eqv? (car datum) 'lambda)
           (cond [(and (null? (cddr datum)) (not (list? (2nd datum))))
               (eopl:error 'parse-exp "Error in parse-exp: lambda expression: lambda expression missing body")]
@@ -410,10 +415,33 @@ proc-names idss bodiess old-env)))
 
 ; top-level-eval evaluates a form in the global environment
 
-(define  top-level-eval
+(define top-level-eval
   (lambda (form)
     ; later we may add things that are not expressions.
-    (eval-exp form (empty-env))))
+    (cases expression form
+      [begin-exp (body)
+        (top-level-begin body)]
+      [define-exp (variable definition)
+        (extend-global-env variable definition)]
+      [else 
+        (eval-exp form (global-env))])))
+
+(define top-level-begin
+  (lambda (body)
+    (if (null? (cdr body))
+          (top-level-eval (car body))
+          (begin
+                (top-level-eval (car body))
+                (top-level-begin (cdr body))))))
+
+(define extend-global-env 
+  (lambda (variable definition)
+    (cases global-env environment
+      [extended-env-record (syms vals env)
+        (set! syms (cons variable syms))
+        (set! vals (cons (box definition) vals))]
+      [else 
+        (display "not ready")])))
 
 ; eval-exp is the main component of the interpreter
 
@@ -737,7 +765,8 @@ proc-names idss bodiess old-env)))
     (top-level-eval (syntax-expand (parse-exp x)))))
 
 
-
+(define reset-global-env
+ (lambda () (set! global-env (init-env))))
 
 
 
