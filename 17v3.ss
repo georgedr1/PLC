@@ -1,8 +1,8 @@
 ;:  Single-file version of the interpreter.
 ;; Easier to submit to server probably harder to use in the development process
 
- ; (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
-(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
+  (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
+;(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
 
 ;TODO: Ask about why subst-leftmost on letrec isn't working
 ;TODO: Ask about why while only loops one time
@@ -423,6 +423,7 @@
                                       (map car vars)
                                       (map (lambda (x) (eval-exp x env)) (map cadr vars))
                                       env)))
+			(set-box! env (unbox extended-env))
           (eval-let-bodies body env))]
       [letrec-exp (ids bodies)
         (eval-let-bodies bodies
@@ -522,10 +523,6 @@
   (lambda (rands env)
     (map (lambda (x) (eval-exp x env)) rands)))
 
-;  Apply a procedure to its arguments.
-;  At this point we only have primitive procedures.  
-;  User-defined procedures will be added later.
-
 (define apply-proc
   (lambda (proc-value args)
     ; (display "apply-proc\n")
@@ -535,10 +532,10 @@
       [proc (name)
         (name args)]
       [closure (id bodies env)
-        ; (display env)
         (cond 
-          [(list? id)   
+          [(list? id)  
             (let ((extended-env (extend-env id args env)))
+							(set! env (unbox extended-env))
                    (eval-let-bodies bodies extended-env))]
           [(pair? id)
             (let* ([prop-id (improper-2-proper id)]
