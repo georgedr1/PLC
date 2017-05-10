@@ -1,8 +1,8 @@
 ;:  Single-file version of the interpreter.
 ;; Easier to submit to server probably harder to use in the development process
 
-  (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
-;(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
+  ; (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
+(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
 
 ;TODO: Ask about why subst-leftmost on letrec isn't working
 ;TODO: Ask about why while only loops one time
@@ -190,7 +190,7 @@
               (if-exp (parse-exp (2nd datum))
                 (map parse-exp (cddr datum)))])]
       [(eqv? (car datum) 'or)
-        (or-exp (list (parse-exp (cdr datum))))]
+        (or-exp (map parse-exp (cdr datum)))]
       [(eqv? (car datum) 'let)
         (cond [(or (null? (cdr datum)) (null? (cddr datum)))
               (eopl:error 'parse-exp "Error in parse-exp: let expression: incorrect length: ~s" datum)]
@@ -488,7 +488,6 @@ proc-names idss bodiess old-env)))
                                                             "variable ~s is not bound"
                                                             id)))))] 
       [or-exp (args)
-        (display (eval-exp (car args) env))
         (cond [(null? (cdr args)) (eval-exp (car args) env)]
               [(eval-exp (car args) env) #t]
               [else (eval-exp (or-exp (cdr args)) env)])]    
