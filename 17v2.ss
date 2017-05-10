@@ -1,8 +1,8 @@
 ;:  Single-file version of the interpreter.
 ;; Easier to submit to server probably harder to use in the development process
 
- ; (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
-(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
+  (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
+;(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
 
 ;TODO: Ask about why subst-leftmost on letrec isn't working
 ;TODO: Ask about why while only loops one time
@@ -17,6 +17,8 @@
 ; parsed expression
 
 (define-datatype expression expression?
+  [or-exp
+    (args (list-of expression?))]
   [var-exp
    (id symbol?)]
   [lambda-exp
@@ -123,7 +125,7 @@
    (env environment?))
   [recursively-extended-env-record
     (proc-names (list-of symbol?))
-    (idss (list-of pair?))
+    (idss (list-of list?))
     (bodiess (list-of (list-of expression?)))
     (env environment?)])
 
@@ -187,6 +189,8 @@
             [else     
               (if-exp (parse-exp (2nd datum))
                 (map parse-exp (cddr datum)))])]
+      [(eqv? (car datum) 'or)
+        (or-exp (list (parse-exp (cdr datum))))]
       [(eqv? (car datum) 'let)
         (cond [(or (null? (cdr datum)) (null? (cddr datum)))
               (eopl:error 'parse-exp "Error in parse-exp: let expression: incorrect length: ~s" datum)]
@@ -364,15 +368,27 @@ proc-names idss bodiess old-env)))
     (lambda (exp)
         ; (display "syntax-expand\n")
         (cases expression exp
+          [define-exp (variable definition)
+            (define-exp variable (syntax-expand definition))]
           [var-exp (id) exp]
           [lit-exp (id) exp]
           [app-exp (rator rands) (app-exp rator (map syntax-expand rands))]
+          [or-exp (args)
+            (or-exp (map syntax-expand args))]
           [lambda-exp (id body) 
             (lambda-exp id (map syntax-expand body))]
           [let-exp (vars body)
             (app-exp 
               (lambda-exp (map car vars) (map syntax-expand body))
               (map syntax-expand (map cadr vars)))]
+          [let*-exp (vars body)
+            ; (display vars)
+            ; (newline)
+            ; (display (map cadadr vars))
+            ; (newline)
+            ; (display (map caaddr vars))
+            ; (newline)
+            (syntax-expand (expand-let* (map cadadr vars) (map caaddr vars) body))]
           [letrec-exp (ids bodies)
             ;(display ids)
             (letrec-exp
@@ -388,7 +404,7 @@ proc-names idss bodiess old-env)))
           [set!-exp (var new)
             (set!-exp var (syntax-expand new))]
           [begin-exp (body)
-            (syntax-expand (let-exp '() (map syntax-expand body)))]
+            (begin-exp (map syntax-expand body))]
           [cond-exp (conditions bodies)
             (cond [(and (null? (cdr conditions)) (eqv? (unparse-exp (car conditions)) 'else))
                     (syntax-expand (car bodies))]
@@ -403,7 +419,11 @@ proc-names idss bodiess old-env)))
           [else exp])))
 
 
-
+(define expand-let*
+    (lambda (var sym body)
+      (if (null? (cdr var))
+        (let-exp (list (list (car var) (car sym))) body)
+        (let-exp (list (list (car var) (car sym))) (list (expand-let* (cdr var) (cdr sym) body))))))
 
 ;-------------------+
 ;                   |
@@ -424,7 +444,7 @@ proc-names idss bodiess old-env)))
       [define-exp (variable definition)
         (extend-global-env variable definition)]
       [else 
-        (eval-exp form (global-env))])))
+        (eval-exp form global-env)])))
 
 (define top-level-begin
   (lambda (body)
@@ -436,10 +456,15 @@ proc-names idss bodiess old-env)))
 
 (define extend-global-env 
   (lambda (variable definition)
-    (cases global-env environment
+    ;(display global-env)
+    (newline)
+    (cases environment global-env
       [extended-env-record (syms vals env)
-        (set! syms (cons variable syms))
-        (set! vals (cons (box definition) vals))]
+        (set! global-env (extend-env (list variable) (list (top-level-eval definition)) global-env))
+        ; (set! syms (cons variable syms))
+        ; (set! vals (cons (box definition) vals))
+       ; (display global-env)
+    (newline)]
       [else 
         (display "not ready")])))
 
@@ -462,6 +487,11 @@ proc-names idss bodiess old-env)))
                                          (lambda () (error 'apply-env
                                                             "variable ~s is not bound"
                                                             id)))))] 
+      [or-exp (args)
+        (display (eval-exp (car args) env))
+        (cond [(null? (cdr args)) (eval-exp (car args) env)]
+              [(eval-exp (car args) env) #t]
+              [else (eval-exp (or-exp (cdr args)) env)])]    
       [app-exp (rator rands)
         (let ([proc-value (eval-exp rator env)]
               [args (eval-rands rands env)])
@@ -480,39 +510,13 @@ proc-names idss bodiess old-env)))
       [letrec-exp (ids bodies)
         (eval-let-bodies bodies
           (extend-env-recursively (map cadadr ids) (map cadr (map caaddr ids)) (map caddr (map caaddr ids)) env))]
+      [begin-exp (bodies)
+        (eval-let-bodies bodies env)]
       [lambda-exp (id body)
+       ; (display env)
         (closure id body env)
-        ; (cond [(list? id)
-        ;         (proc
-        ;           (lambda (vals)           
-        ;             (let ((extended-env (extend-env 
-        ;                                           id
-        ;                                           vals
-        ;                                           env)))
-        ;            (eval-let-bodies body extended-env))))]
-        ;       [(pair? id)
-        ;         (let* ([prop-id (improper-2-proper id)]
-        ;                [id-len (length prop-id)])
-        ;         (proc
-        ;           (lambda (vals)
-        ;             (let ((extended-env (extend-env 
-        ;                                           prop-id
-        ;                                           (append (list-head vals (sub1 id-len)) (list (list-tail vals (sub1 id-len))))
-        ;                                           env)))
-        ;            (eval-let-bodies body extended-env)))))]
-        ;       [(symbol? id) 
-        ;         (proc
-        ;           (lambda (vals)           
-        ;             (let ((extended-env (extend-env 
-        ;                                           (list id)
-        ;                                           (list vals)
-        ;                                           env)))
-        ;            (eval-let-bodies body extended-env))))])
         ]
          [set!-exp (var new)
-          ; eval new
-          ; find var in env
-          ; use list ref to change value to new 
           (let ([new-val (eval-exp new env)])
                 (set!-in-env var new-val env)
             )]
@@ -534,7 +538,6 @@ proc-names idss bodiess old-env)))
 
 (define set!-in-env 
   (lambda (var new-val env)
-    ; (display "set!-in-env\n")
     (cases environment env       ;  succeed is appluied if sym is found otherwise 
       [empty-env-record ()       ;  fail is applied.
         (eopl:error 'set!-in-env "var not found in empty environment: ~a" var)]
@@ -544,15 +547,14 @@ proc-names idss bodiess old-env)))
                         (let ([old-val (list-ref vals pos)])
                           (set-box! old-val new-val))
                         (set!-in-env var new-val next-env)))]
+      [recursively-extended-env-record (proc-names idss bodiess next-env)
+        (let ([pos (list-find-position (cadr var) proc-names)])
+                (if (number? pos)
+                        (let ([old-val (list-ref idss pos)])
+                          (set-box! old-val new-val))
+                        (set!-in-env var new-val next-env)))]
       [else
         (eopl:error 'set!-in-env "wrong env: ~a" var)])))
-      ; [recursively-extended-env-record (procnames idss bodiess old-env)
-      ;   (let ([pos (list-find-position sym procnames)])
-      ;     (if (number? pos)
-      ;       (closure (list-ref idss pos)
-      ;                 (list-ref bodiess pos)
-      ;                 env)
-      ;       (apply-env old-env sym succeed fail)))])))
    
 
 
@@ -567,19 +569,12 @@ proc-names idss bodiess old-env)))
 
 (define eval-let-bodies
   (lambda (bodies env)
-      ; (display "eval-let-bodies\n")
       (if (null? (cdr bodies))
-           ; (begin 
-           ;  (display (car bodies))
-           ;  ; (display (eval-exp (car bodies) env))
-           ;  (display "\n")
             (eval-exp (car bodies) env)
           (begin 
-            ; (display (car bodies))
             (eval-exp (car bodies) env)
             (eval-let-bodies (cdr bodies) env)))))
 
-; evaluate the list of operands putting results into a list
 (define improper-2-proper
   (lambda (ils)
     (if (pair? ils)
@@ -670,9 +665,9 @@ proc-names idss bodiess old-env)))
       [(add1) (+ (1st args) 1)]
       [(sub1) (- (1st args) 1)]
       [(cons) 
-		(if (not (eq? 2 (length args)))
-			(eopl:error 'apply-prim-proc "Incorrect number of arguments to cons: ~s" args)
-			(cons (1st args) (2nd args)))]
+    		(if (not (eq? 2 (length args)))
+    			(eopl:error 'apply-prim-proc "Incorrect number of arguments to cons: ~s" args)
+			     (cons (1st args) (2nd args)))]
       [(list-tail) (list-tail (1st args) (2nd args))]
       [(append) (append (1st args) (2nd args))]
       [(eqv?) (eqv? (1st args) (2nd args))]
@@ -683,17 +678,17 @@ proc-names idss bodiess old-env)))
       [(<=) (<= (1st args) (2nd args))]
       [(not) (not (1st args))]
       [(and) (andmap (lambda (x) x) args)]
-      [(or) (ormap (lambda (x) x) args)]
+      ; [(or) (apply-or args)]
       [(car) 
-		(cond 
-			[(not (eq? 1 (length args)))
-				(eopl:error 'apply-prim-proc "Incorrect number of arguments to car: ~s" args)]
-			[(not (list? (1st args)))
-				(eopl:error 'apply-prim-proc "car requires a list: ~s" (1st args))]
-			[(null? (1st args))
-				(eopl:error 'apply-prim-proc "Cannot find the car of an empty list: ~s" (1st args))]
-			[else
-				(car (1st args))])]
+    		(cond 
+    			[(not (eq? 1 (length args)))
+    				(eopl:error 'apply-prim-proc "Incorrect number of arguments to car: ~s" args)]
+    			[(not (list? (1st args)))
+    				(eopl:error 'apply-prim-proc "car requires a list: ~s" (1st args))]
+    			[(null? (1st args))
+    				(eopl:error 'apply-prim-proc "Cannot find the car of an empty list: ~s" (1st args))]
+    			[else
+    				(car (1st args))])]
       [(cdr) (cdr (1st args))]
       [(list) args]
       [(null?) (null? (1st args))]
@@ -748,6 +743,12 @@ proc-names idss bodiess old-env)))
       [else (error 'apply-prim-proc 
             "Bad primitive procedure name: ~s" 
             prim-proc)])))
+
+(define apply-or
+  (lambda (args)
+    (cond [(null? args) #f]
+          [(car args) #t]
+          [else (apply-or (cdr args))])))
 			
 	
 
@@ -766,7 +767,7 @@ proc-names idss bodiess old-env)))
 
 
 (define reset-global-env
- (lambda () (set! global-env (init-env))))
+ (lambda () (set! global-env init-env)))
 
 
 
