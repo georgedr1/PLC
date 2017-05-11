@@ -4,7 +4,7 @@
  (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
 ;(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
 
-;Things to convert to cps: eval-exp, set!-in-env, make a new eval-bodies-cps, map-cps, eval-rands, apply-proc, extend-env, extend-env-recrusively
+;Things to convert to cps: Xeval-exp, make a new eval-bodies-cps, map-cps, Xeval-rands, Xapply-proc, 
 
 ;-------------------+
 ;                   |
@@ -143,6 +143,7 @@
     (env environment?)])
 
 (define-datatype continuation continuation?
+  [init-k]
   [test-k
     (then-exp expression?)
     (else-exp expression?)
@@ -155,6 +156,10 @@
   [rands-k 
     (proc-value scheme-value?)
     (k continuation?)] 
+  [map-k 
+    (func procedure?)
+    (car-ls scheme-value?)
+    (k continuation?)]
   )
 	 
 ; An auxiliary procedure that could be helpful.
@@ -305,31 +310,18 @@
 
 
 
-(define  empty-env
+(define empty-env
   (lambda ()
     (empty-env-record)))
 
-(define  extend-env
+(define extend-env
   (lambda (syms vals env)
-    (extended-env-record syms (map box vals) env)))
+    (extended-env-record syms (map box vals) env))) ; TODO: change to cps-map
 
 (define extend-env-recursively
-(lambda (proc-names idss bodiess old-env)
-  ; (display "extend-env-recursively\n")
-  ; (display "idss ")
-  ;   (display idss)
-  ;   (display "\n")
-  ;   (display "bodies ")
-  ;   (display bodiess)
-  ;   (display "\n")
-  ;   (display "proc names ")
-  ;   (display proc-names)
-  ;   (display "\n")
-  ;   (display "old-env ")
-  ;   (display old-env)
-  ;   (display "\n")
-(recursively-extended-env-record
-proc-names idss bodiess old-env)))
+  (lambda (proc-names idss bodiess old-env)
+    (recursively-extended-env-record
+                                      proc-names idss bodiess old-env)))
 
 (define  list-find-position
   (lambda (sym los)
@@ -348,7 +340,7 @@ proc-names idss bodiess old-env)))
 		 #f))))))
 
 (define apply-env
-  (lambda (env sym succeed fail) ; succeed and fail are "callback procedures 
+  (lambda (env sym succeed fail) ; succeed and fail are "callback procedures ;TODO ask if this needs to be CPS
     ; (display "apply-env\n")
     (cases environment env       ;  succeed is appluied if sym is found otherwise 
       [empty-env-record ()       ;  fail is applied.
@@ -401,12 +393,6 @@ proc-names idss bodiess old-env)))
               (lambda-exp (map car vars) (map syntax-expand body))
               (map syntax-expand (map cadr vars)))]
           [let*-exp (vars body)
-            ; (display vars)
-            ; (newline)
-            ; (display (map cadadr vars))
-            ; (newline)
-            ; (display (map caaddr vars))
-            ; (newline)
             (syntax-expand (expand-let* (map cadadr vars) (map caaddr vars) body))]
           [letrec-exp (ids bodies)
             ;(display ids)
@@ -454,14 +440,19 @@ proc-names idss bodiess old-env)))
 
 
 (define map-cps
-  (lambda (f ls k)
+  (lambda (func ls k)
     (if (null? ls)
-      (k '())
-      (f (car ls) (lambda (v) (map-cps f (cdr ls) (lambda (v2) (k (cons v v2 )))))))))
+       (apply-k k '())
+       (map-cps func (cdr ls) (map-k func (car ls) k)))))
+
+(define car-cps
+  (lambda (ls k)
+    (apply-k k (car ls))))
 
 (define apply-k
   (lambda (k val)
     (cases continuation k
+      [init-k () val]
       [test-k (then-exp else-exp env k)
         (if val
           (eval-exp then-exp env k)
@@ -469,7 +460,10 @@ proc-names idss bodiess old-env)))
       [rator-k (rands env k)
         (eval-rands rands env (rands-k val k) k)]
       [rands-k (proc-value k)
-        (apply-proc proc-value val k)]))) 
+        (apply-proc proc-value val k)]
+      [map-k (func car-ls k)
+        (apply-k k (cons (func car-ls) val))
+        ] )))
 
 
 ;-------------------+
@@ -493,7 +487,7 @@ proc-names idss bodiess old-env)))
       [exit-list-exp (expressions)
         (display "exit-list\n")]
       [else 
-        (eval-exp form global-env (lambda (v) v))])))
+        (eval-exp form global-env (init-k))])))
 
 (define top-level-begin
   (lambda (body)
@@ -505,15 +499,9 @@ proc-names idss bodiess old-env)))
 
 (define extend-global-env 
   (lambda (variable definition)
-    ;(display global-env)
-    (newline)
     (cases environment global-env
       [extended-env-record (syms vals env)
-        (set! global-env (extend-env (list variable) (list (top-level-eval definition)) global-env))
-        ; (set! syms (cons variable syms))
-        ; (set! vals (cons (box definition) vals))
-       ; (display global-env)
-    (newline)]
+        (set! global-env (extend-env (list variable) (list (top-level-eval definition)) global-env))]
       [else 
         (display "not ready")])))
 
@@ -571,9 +559,9 @@ proc-names idss bodiess old-env)))
       [else (eopl:error 'eval-exp "Bad abstract syntax: ~a" exp)])))
 
 
-(define set!-in-env 
+(define set!-in-env ; check with claude if need to be cps, very likely not needed
   (lambda (var new-val env)
-    (cases environment env       ;  succeed is appluied if sym is found otherwise 
+    (cases environment env       ;  succeed is applied if sym is found otherwise 
       [empty-env-record ()       ;  fail is applied.
         (eopl:error 'set!-in-env "var not found in empty environment: ~a" var)]
       [extended-env-record (syms vals next-env)
@@ -592,7 +580,7 @@ proc-names idss bodiess old-env)))
         (eopl:error 'set!-in-env "wrong env: ~a" var)])))
 
 
-(define eval-bodies
+(define eval-bodies ; TODO keep this, but make a new cps-eval-bodies for things that call it in eval-exp
   (lambda (bodies env k)
       (if (null? (cdr bodies))
             (eval-exp (car bodies) env k)
@@ -612,7 +600,7 @@ proc-names idss bodiess old-env)))
           '()
           (cons (car ls) (list-head (cdr ls) (sub1 n))))))
 
-(define  eval-rands
+(define eval-rands
   (lambda (rands env k)
     (map (lambda (x) (eval-exp x env k)) rands)))
 
