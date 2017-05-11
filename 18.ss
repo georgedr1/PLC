@@ -144,13 +144,14 @@
 
 (define-datatype continuation continuation?
   [init-k]
+  [display-k]
   [test-k
     (then-exp expression?)
     (else-exp expression?)
     (env environment?)
     (k continuation?)]
   [rator-k 
-    (rands (list-of? expression?))
+    (rands (list-of expression?))
     (env environment?)
     (k continuation?)]
   [rands-k 
@@ -453,16 +454,17 @@
   (lambda (k val)
     (cases continuation k
       [init-k () val]
+      [display-k () (display "The result is: ") (display val)]
       [test-k (then-exp else-exp env k)
         (if val
           (eval-exp then-exp env k)
           (eval-exp else-exp env k))]
       [rator-k (rands env k)
-        (eval-rands rands env (rands-k val k) k)]
+        (eval-rands rands env (rands-k val k))]
       [rands-k (proc-value k)
         (apply-proc proc-value val k)]
       [map-k (func car-ls k)
-        (apply-k k (cons (func car-ls) val))
+        (apply-k k (cons (func car-ls (init-k)) val)) ; cons k or cdr k
         ] )))
 
 
@@ -514,7 +516,7 @@
     ; (display "\n")
     (cases expression exp
       [lit-exp (datum) (apply-k k datum)]
-      [var-exp (id)
+      [var-exp (id) ;TODO: ask if apply-env needs a k
 				(apply-env env 
                    id; look up its value.
       	           (lambda (x) x) ; procedure to call if it is in the environment 
@@ -529,33 +531,27 @@
               [(eval-exp (car args) env k) #t]
               [else (eval-exp (or-exp (cdr args)) env k)])]    
       [app-exp (rator rands)
-        (let ([proc-value (eval-exp rator env k)]
-              [args (eval-rands rands env k)])
-            (apply-proc proc-value args k))]
+        (eval-exp rator
+                  env
+                  (rator-k rands env k))]
+        ; (let ([proc-value (eval-exp rator env k)]
+        ;       [args (eval-rands rands env k)])
+        ;     (apply-proc proc-value args k))]
       [if-exp (condition body)
         (if (eval-exp condition env k)
               (eval-exp (car body) env k)
               (if (not (null? (cdr body)))
                     (eval-exp (cadr body) env k)))]
-      [let-exp (vars body)
-        (let ((extended-env (extend-env 
-                                      (map car vars)
-                                      (map (lambda (x) (eval-exp x env k)) (map cadr vars))
-                                      env)))
-          (eval-bodies body extended-env k))]
       [letrec-exp (ids bodies)
         (eval-bodies bodies
           (extend-env-recursively (map cadadr ids) (map cadr (map caaddr ids)) (map caddr (map caaddr ids)) env) k)]
       [begin-exp (bodies)
         (eval-bodies bodies env k)]
       [lambda-exp (id body)
-       ; (display env)
-        (closure id body env)
-        ]
-         [set!-exp (var new)
-          (let ([new-val (eval-exp new env k)])
-                (set!-in-env var new-val env)
-            )]
+        (apply-k k (closure id body env))]
+      [set!-exp (var new)
+      (let ([new-val (eval-exp new env k)])
+            (set!-in-env var new-val env))]
       [else (eopl:error 'eval-exp "Bad abstract syntax: ~a" exp)])))
 
 
@@ -602,7 +598,9 @@
 
 (define eval-rands
   (lambda (rands env k)
-    (map (lambda (x) (eval-exp x env k)) rands)))
+    ; (display k)
+    ; (newline)
+    (map-cps (lambda (x y) (eval-exp x env y)) rands k)))
 
 ;  Apply a procedure to its arguments.
 ;  At this point we only have primitive procedures.  
@@ -617,10 +615,7 @@
       [proc (name)
         (name args)]
       [closure (id bodies env)
-        (cond [(list? id)
-                ; (display id)
-                ; (display "\n")
-                ; (display bodies)        
+        (cond [(list? id)     
                     (let ((extended-env (extend-env 
                                                   id
                                                   args
