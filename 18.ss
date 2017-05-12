@@ -157,6 +157,9 @@
   [rands-k 
     (proc-value scheme-value?)
     (k continuation?)] 
+  [cons-k 
+    (ls1 scheme-value?)
+    (k continuation?)]
   [map-k 
     (func procedure?)
     (car-ls scheme-value?)
@@ -347,6 +350,7 @@
       [empty-env-record ()       ;  fail is applied.
         (fail)]
       [extended-env-record (syms vals env)
+        (display "extended-env-record\n")
     		(let ((pos (list-find-position sym syms)))
           	  (if 	(number? pos)
     				(succeed (list-ref (map unbox vals) pos))
@@ -463,8 +467,10 @@
         (eval-rands rands env (rands-k val k))]
       [rands-k (proc-value k)
         (apply-proc proc-value val k)]
+      [cons-k (ls1 k)
+        (apply-k k (cons val ls1))]
       [map-k (func car-ls k)
-        (apply-k k (cons (func car-ls (init-k)) val)) ; cons k or cdr k
+        (func car-ls (cons-k val k)); cons k or cdr k
         ] )))
 
 
@@ -515,9 +521,9 @@
     ; (display env)
     ; (display "\n")
     (cases expression exp
-      [lit-exp (datum) (apply-k k datum)]
+      [lit-exp (datum) (display "lit-exp\n") (apply-k k datum)]
       [var-exp (id) ;TODO: ask if apply-env needs a k
-				(apply-env env 
+				(apply-k k (apply-env env 
                    id; look up its value.
       	           (lambda (x) x) ; procedure to call if it is in the environment 
                    (lambda () (apply-env global-env
@@ -525,7 +531,7 @@
                                          (lambda (x) x) 
                                          (lambda () (error 'apply-env
                                                             "variable ~s is not bound"
-                                                            id)))))] 
+                                                            id))))))] 
       [or-exp (args)
         (cond [(null? (cdr args)) (eval-exp (car args) env k)]
               [(eval-exp (car args) env k) #t]
@@ -534,9 +540,6 @@
         (eval-exp rator
                   env
                   (rator-k rands env k))]
-        ; (let ([proc-value (eval-exp rator env k)]
-        ;       [args (eval-rands rands env k)])
-        ;     (apply-proc proc-value args k))]
       [if-exp (condition body)
         (if (eval-exp condition env k)
               (eval-exp (car body) env k)
@@ -596,7 +599,8 @@
           '()
           (cons (car ls) (list-head (cdr ls) (sub1 n))))))
 
-(define eval-rands
+; (define eval-rands
+(trace-define eval-rands
   (lambda (rands env k)
     ; (display k)
     ; (newline)
@@ -760,7 +764,7 @@
 			
 	
 
-(define  rep      ; "read-eval-print" loop.
+(define rep      ; "read-eval-print" loop.
   (lambda ()
     (display "--> ")
     ;; notice that we don't save changes to the environment...
@@ -769,7 +773,7 @@
       (eopl:pretty-print answer) (newline)
       (rep))))  ; tail-recursive so stack doesn't grow.
 
-(define  eval-one-exp
+(define eval-one-exp
   (lambda (x) 
     (top-level-eval (syntax-expand (parse-exp x)))))
 
