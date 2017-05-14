@@ -4,8 +4,6 @@
  (load "C:/Users/kildufje/Documents/School/Senior/Spring/CSSE304/PLC/chez-init.ss")
 ;(load "C:/Users/georgedr/Documents/Class stuff/Spring 16-17/PLC/PLC/chez-init.ss")
 
-;Things to convert to cps: Xeval-exp, make a new eval-bodies-cps-cps, map-cps, Xeval-rands, Xapply-proc, 
-
 ;-------------------+
 ;                   |
 ;    DATATYPES      |
@@ -178,6 +176,10 @@
     (var expression?)
     (env environment?)
     (k continuation?)]
+  [or-k
+    (args (list-of expression?))
+    (env environment?)
+    (k continuation?)]
   )
 	 
 ; An auxiliary procedure that could be helpful.
@@ -343,12 +345,10 @@
 
 (define  list-find-position
   (lambda (sym los)
-    ; (display "list-find-position\n")
     (list-index (lambda (xsym) (eqv? sym xsym)) los)))
 
 (define  list-index
   (lambda (pred ls)
-    ; (display "list-index\n")
     (cond
      ((null? ls) #f)
      ((pred (car ls)) 0)
@@ -357,9 +357,8 @@
 		 (+ 1 list-index-r)
 		 #f))))))
 
-(define apply-env
-  (lambda (env sym succeed fail) ; succeed and fail are "callback procedures ;TODO ask if this needs to be CPS
-    ; (display "apply-env\n")
+(define apply-env ;TODO ask if this needs to be CPS
+  (lambda (env sym succeed fail) ; succeed and fail are "callback procedures
     (cases environment env       ;  succeed is appluied if sym is found otherwise 
       [empty-env-record ()       ;  fail is applied.
         (fail)]
@@ -413,12 +412,10 @@
           [let*-exp (vars body)
             (syntax-expand (expand-let* (map cadadr vars) (map caaddr vars) body))]
           [letrec-exp (ids bodies)
-            ;(display ids)
             (letrec-exp
                 (map syntax-expand ids)
                 (map syntax-expand bodies))]
           [named-let-exp (proc-id vars body)
-            ; (display vars)
             (letrec-exp
               (list (app-exp (var-exp proc-id) (list (lambda-exp (map car vars) (map syntax-expand body)))))
               (list (app-exp (var-exp proc-id) (map parse-exp (map cadadr vars)))))]
@@ -435,8 +432,6 @@
                     (if-exp (syntax-expand (car conditions)) (list (syntax-expand (car bodies))))]
                   [else
                     (if-exp (syntax-expand (car conditions)) (list (syntax-expand (car bodies)) (syntax-expand (cond-exp (cdr conditions) (cdr bodies)))))])]
-          ;[case-exp (expr0 keys exprs)]
-            ;(syntax-expand (cond-exp (ormap ))]
          [while-exp (test bodies)
            (syntax-expand (named-let-exp 'loop '((dummy (lit-exp 1))) (list (if-exp test (append bodies (list (app-exp (var-exp 'loop) (list (lit-exp '())))))))))]
           [else exp])))
@@ -474,7 +469,8 @@
       [display-k () (display "The result is: ") (display val)]
       [test1-k (then-exp env k)
         (if val
-          (eval-exp then-exp env k))]
+          (eval-exp then-exp env k)
+           (apply-k k val))]
       [test2-k (then-exp else-exp env k)
         (if val
           (eval-exp then-exp env k)
@@ -488,11 +484,15 @@
       [map-k (func car-ls k)
         (func car-ls (cons-k val k))]
       [set-k (var env k)
-        (apply-k k (set!-in-env var val env))]
+        (apply-k k (set!-in-env var val env))] ;TODO: not cps
       [bodies-k (cdr-body env k)
         (if (null? cdr-body)
               (apply-k k val)
-              (eval-bodies-cps cdr-body env k))] )))
+              (eval-bodies-cps cdr-body env k))]
+      [or-k (args env k)
+        (if (null? args)
+            (apply-k k #f)
+            (eval-exp (or-exp (cdr args)) env k))] )))
 
 
 ;-------------------+
@@ -513,8 +513,6 @@
         (top-level-begin body)]
       [define-exp (variable definition)
         (extend-global-env variable definition)]
-      [exit-list-exp (expressions)
-        (display "exit-list\n")]
       [else 
         (eval-exp form global-env (init-k))])))
 
@@ -540,7 +538,7 @@
   (lambda (exp env k)
     (cases expression exp
       [lit-exp (datum) (apply-k k datum)]
-      [var-exp (id) ;TODO: ask if apply-env needs a k
+      [var-exp (id) 
 				(apply-k k (apply-env env 
                    id; look up its value.
       	           (lambda (x) x) ; procedure to call if it is in the environment 
@@ -551,9 +549,9 @@
                                                             "variable ~s is not bound"
                                                             id))))))] 
       [or-exp (args)
-        (cond [(null? (cdr args)) (eval-exp (car args) env k)]
-              [(eval-exp (car args) env k) #t]
-              [else (eval-exp (or-exp (cdr args)) env k)])]    
+          (eval-exp (car args) env (or-k args env k))]
+      [exit-list-exp (bodies)
+        (eval-rands bodies env (init-k))] 
       [app-exp (rator rands)
         (eval-exp rator
                   env
@@ -561,13 +559,8 @@
       [if-exp (condition body)
         (if (null? (cdr body))
               (eval-exp condition env (test1-k (car body) env k))
-              (eval-exp condition env (test2-k (car body) (cadr body) env k)))]            
-        ; (if (eval-exp condition env k)
-        ;       (eval-exp (car body) env k)
-        ;       (if (not (null? (cdr body)))
-        ;             (eval-exp (cadr body) env k)))]
+              (eval-exp condition env (test2-k (car body) (cadr body) env k)))]     
       [letrec-exp (ids bodies)
-        (display "evaling letrec\n")
         (eval-bodies-cps bodies
           (extend-env-recursively (map cadadr ids) (map cadr (map caaddr ids)) (map caddr (map caaddr ids)) env) k)]
       [begin-exp (bodies)
@@ -600,26 +593,9 @@
         (eopl:error 'set!-in-env "wrong env: ~a" var)])))
 
 
-(define eval-bodies-cps ; TODO keep this, but make a new cps-eval-bodies-cps for things that call it in eval-exp
+(define eval-bodies-cps
   (lambda (bodies env k)
-      ; (display "eval-bodies: ")
-      ; (display (car bodies))
-      ; (newline)
-      ; (display "with k: ")
-      ; (display k)
-      ; (newline)
-      ; (newline)
-      ; (if (null? (cdr bodies))
-      ;       (apply-k k (eval-exp (car bodies) env k))
       (eval-exp (car bodies) env (bodies-k (cdr bodies) env k))))
-
-; (define eval-bodies
-;   (lambda (bodies env)
-;       (if (null? (cdr bodies))
-;             (eval-exp (car bodies) env k)
-;           (begin 
-;             (eval-exp (car bodies) env)
-;             (eval-let-bodies (cdr bodies) env)))))
 
 (define improper-2-proper
   (lambda (ils)
@@ -633,23 +609,14 @@
           '()
           (cons (car ls) (list-head (cdr ls) (sub1 n))))))
 
-; (define eval-rands
 (define eval-rands
   (lambda (rands env k)
-    ; (display k)
-    ; (newline)
-    (map-cps (lambda (x y) (eval-exp x env y)) rands k)))
-
-;  Apply a procedure to its arguments.
-;  At this point we only have primitive procedures.  
-;  User-defined procedures will be added later.
+    (map-cps (lambda (x y) (eval-exp x env y)) rands k))) ;TODO: is this cps?
 
 (define apply-proc
   (lambda (proc-value args k)
-    ; (display "apply-proc\n")
     (cases proc-val proc-value
       [prim-proc (op) (apply-prim-proc op args k)]
-			; You will add other cases
       [proc (name)
         (name args)]
       [closure (id bodies env)
@@ -693,14 +660,6 @@
      (empty-env)))
 
 (define global-env init-env)
-
-; Usually an interpreter must define  each 
-; built-in procedure individually.  We are "cheating" a little bit.
-
-
-
-
-
 
 (define apply-prim-proc
   (lambda (prim-proc args k)
@@ -787,8 +746,9 @@
   		[(apply)
         (if (not (eq? 2 (length args)))
           (eopl:error 'apply-prim-proc "Incorrect number of arguments to apply: ~s" args)
-          (apply-k k (apply-proc (1st args) (2nd args) k)))]
-  		[(map) (apply-k k (map (lambda x (apply-proc (1st args) x k)) (2nd args)))]
+          (apply-proc (1st args) (2nd args) k))]
+  		;[(map) (map (lambda x (apply-proc (1st args) x k)) (2nd args))]
+      [(map) (map-cps (lambda (x y) (apply-proc (1st args) (list x) y)) (cadr args) k)]
         [else (error 'apply-prim-proc 
               "Bad primitive procedure name: ~s" 
               prim-proc)])))
